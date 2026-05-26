@@ -7,6 +7,7 @@ import asyncio
 
 
 class AudioRecorder:
+  CHUNK = 1024
 
   def __init__(self):
     self._mic_id = None
