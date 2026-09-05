@@ -1,0 +1,37 @@
+{
+  "model": "claude-sonnet-4-6",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"$clients = zellij action list-clients 2>$null; $isFocused = $clients -match 'terminal_' + $env:ZELLIJ_PANE_ID; if (-not $isFocused) { [System.Media.SystemSounds]::Asterisk.Play(); }\""
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"$clients = zellij action list-clients 2>$null; $isFocused = $clients -match 'terminal_' + $env:ZELLIJ_PANE_ID; if (-not $isFocused) { [System.Media.SystemSounds]::Hand.Play(); }\""
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "effortLevel": "low",
+  "autoUpdatesChannel": "latest",
+  "theme": "dark",
+  "enabledPlugins": {
+    "mattpocock-skills@claude-plugins-official": true
+  }
+}
