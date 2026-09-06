@@ -1,0 +1,74 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1e1e2e;
+  --surface: #252535;
+  --border: #353550;
+  --text: #cdd6f4;
+  --text-muted: #6c7086;
+  --accent: #89b4fa;
+  --active-tab-bg: #313244;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body { height: 100vh; overflow: hidden; }
+
+.app-frame {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "toolbar toolbar"
+    "sidebar main";
+  height: 100vh;
+}
+
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tab-btn:hover { background: var(--active-tab-bg); color: var(--text); }
+.tab-btn.active { background: var(--active-tab-bg); color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+.note-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+.main-pane {
+  grid-area: main;
+  background: var(--bg);
+  overflow: auto;
+}
+
+.recording-toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding: 0 16px;
+}
