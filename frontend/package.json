@@ -1,0 +1,22 @@
+{
+  "name": "voice-to-text-notes",
+  "version": "0.1.0",
+  "description": "Voice-to-Text Notes desktop app",
+  "main": "electron/main.js",
+  "scripts": {
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "test:watch": "node node_modules/vitest/vitest.mjs",
+    "build": "node node_modules/typescript/bin/tsc",
+    "start": "node node_modules/electron/cli.js ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}

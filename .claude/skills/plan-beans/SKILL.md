@@ -2,16 +2,16 @@
 
 The `/plan-beans` command synchronizes ticket declarations from `/to-tickets` with Beans, converting ticket dependency declarations into a Beans dependency graph. It does not redesign, split, merge, or semantically re-plan tickets—it faithfully reflects the ticket structure into Beans.
 
-## Use This Skill For
+# Use This Skill For
 
 - Synchronizing tickets created by `/to-tickets` into Beans for execution tracking
 - Validating ticket dependencies for cycles and conflicts
 - Viewing the current execution frontier (ready vs. blocked tickets)
 - Updating Beans when ticket dependencies change
 
-## Workflow
+# Workflow
 
-# Find Tickets
+## Find Tickets
 
 Locate the feature's tickets directory:
 
@@ -31,7 +31,11 @@ Read the `/to-tickets` skill only to understand the ticket format. For normal op
 
 Do not analyze ticket descriptions or acceptance criteria unless needed to resolve an error.
 
-# Beans ID Assignment
+## Check if Beans Database Exists
+
+When creating or initializing beans database, check if `BEANS_DB` environment variable is initialized. If so, that is the location of the beans database for the project. If it does not exist, create one locally in the project.
+
+## Beans ID Assignment
 
 Each ticket must contain a stable Beans ID in its frontmatter:
 
@@ -57,7 +61,7 @@ If `beans_id` is missing:
 
 Do not create a second Beans task if `beans_id` already exists. The ticket's `beans_id` is the authoritative mapping between the Markdown ticket and Beans.
 
-# Read Dependencies
+## Read Dependencies
 
 For each ticket, read its `Blocked by` field.
 
@@ -78,7 +82,7 @@ A ticket with no blockers has no incoming dependency.
 
 Do not infer dependencies that are not declared by `/to-tickets`.
 
-# Validate
+## Validate
 
 Before modifying Beans, validate the dependency graph:
 - Every blocker exists
@@ -88,7 +92,7 @@ Before modifying Beans, validate the dependency graph:
 
 If validation fails, stop and report the problem. Do not guess.
 
-# Synchronize Beans
+## Synchronize Beans
 
 Compare the declared dependencies with the existing Beans graph.
 
@@ -99,7 +103,7 @@ beans dep add <blocker-beans-id> <blocked-beans-id>
 
 Do not remove existing Beans dependencies automatically. If Beans contains a dependency that conflicts with the ticket declarations, report it and ask the user what to do.
 
-# Confirmation
+## Confirmation
 
 Before adding dependencies, show a concise dry run:
 
@@ -118,7 +122,7 @@ Apply these changes? [y/N]
 
 Do not modify Beans until the user confirms.
 
-# Show Execution Frontier
+## Show Execution Frontier
 
 After synchronization, run:
 
@@ -144,7 +148,7 @@ Blocked:
 
 Do not claim or execute any ticket.
 
-## Ownership
+# Ownership
 
 - Ticket decomposition & dependency decisions — `/to-tickets` declares what tickets exist and which block which
 - Synchronization & validation — `/plan-beans` ensures Beans reflects ticket declarations
@@ -153,7 +157,7 @@ Do not claim or execute any ticket.
 - Dependency declarations — `Blocked by` declared in ticket frontmatter
 - Current execution frontier — `beans ready` is query-only, authoritative view
 
-## Rules
+# Rules
 
 - Never invent dependencies—only add what `/to-tickets` declares
 - Never execute tickets during `/plan-beans`—only synchronize and validate
@@ -163,7 +167,7 @@ Do not claim or execute any ticket.
 - Dry run before commit—always show the plan before applying changes
 - Preserve existing Beans state—only add missing dependencies, never remove
 
-## Example Workflow
+# Example Workflow
 
 ```
 $ /plan-beans feature-auth
@@ -204,30 +208,30 @@ Blocked:
 4. Add password reset flow (04) — blocked by 02
 ```
 
-## Error Handling
+# Error Handling
 
-### Missing Beans ID
+## Missing Beans ID
 ```
 ❌ Ticket 02 missing beans_id
 
 Action: Create the corresponding Beans task, record its ID in the ticket frontmatter, then re-run /plan-beans.
 ```
 
-### Blocker Not Found
+## Blocker Not Found
 ```
 ❌ Ticket 03 blocked by 99, but ticket 99 does not exist
 
 Action: Check /to-tickets for ticket 99 or remove the blocker declaration from ticket 03.
 ```
 
-### Dependency Cycle
+## Dependency Cycle
 ```
 ❌ Cycle detected: 01 → 02 → 03 → 01
 
 Action: Break the cycle by modifying the Blocked by declarations in /to-tickets.
 ```
 
-### Conflicting Dependencies
+## Conflicting Dependencies
 ```
 ⚠ Beans contains: 01 → 02
 ⚠ Tickets declare: 02 → 01
@@ -235,7 +239,7 @@ Action: Break the cycle by modifying the Blocked by declarations in /to-tickets.
 Action: Resolve the conflict. Update Beans manually or change the ticket declarations?
 ```
 
-## Integration with Related Skills
+# Integration with Related Skills
 
 - **`/to-tickets`** — Defines tickets and their blocking relationships. `/plan-beans` consumes this output.
 - **`Beans`** — Dependency graph storage and execution tracking. `/plan-beans` synchronizes tickets into Beans.
