@@ -6,6 +6,36 @@
 
 ---
 
+## Revision — selection moved to the backend
+
+The original build (reviewed below) held the active Audio Source **entirely in the
+frontend**: `AudioSourceSelector` enumerated devices, picked the default, and
+tracked the selection in `_activeDeviceId` without ever contacting the backend.
+
+Reworked test-first so the **backend owns the selection**:
+
+- **`backend/app/audio_sources.py`** — `AudioSourceRegistry` holds the device list
+  and the active id. It picks the default (`id === "default"`, else the first
+  device), validates every activation, and preserves the current selection across
+  a re-register when that device is still present.
+- **`backend/app/main.py`** — `GET /api/audio/sources`, `PUT /api/audio/sources`
+  (register the enumerated list), `PUT /api/audio/sources/active` (400 on an
+  unknown id).
+- **`frontend/src/audio-source-selector.ts`** — now display-only. It enumerates OS
+  devices (a browser-only capability), hands the list to the backend through an
+  injected `AudioSourceClient`, and renders whatever snapshot the backend returns.
+  No local default-picking or authoritative state; `activeDeviceId` is just the
+  last `active` the backend reported.
+- **`frontend/src/audio-source-client.ts`** — `HttpAudioSourceClient`, the
+  production adapter over `fetch`, wired into `renderer.ts` and mounted in the
+  recording toolbar.
+
+**Seams under test:** backend HTTP API (pytest + `TestClient`, 6 tests); frontend
+`render()` / `<select>` / `change` event with an injected fake client (6 tests).
+The section below documents the superseded frontend-only design.
+
+---
+
 ## What was built
 
 A single TypeScript class, `AudioSourceSelector`, that enumerates OS microphone input devices via an injected async function, renders a `<select>` dropdown into a given DOM element, pre-selects the system default, and tracks which device the user picks — all without starting a recording.
