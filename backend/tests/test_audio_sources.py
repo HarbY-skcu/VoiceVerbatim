@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app, audio_registry
+from backend.app.main import app, audio_registry
 
 client = TestClient(app)
 
