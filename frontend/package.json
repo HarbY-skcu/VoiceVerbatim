@@ -6,8 +6,9 @@
   "scripts": {
     "test": "node node_modules/vitest/vitest.mjs run",
     "test:watch": "node node_modules/vitest/vitest.mjs",
-    "build": "node node_modules/typescript/bin/tsc",
-    "start": "node node_modules/electron/cli.js ."
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron ."
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

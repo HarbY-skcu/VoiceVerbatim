@@ -1,7 +1,7 @@
 import type {
   AudioSourceClient,
   AudioSourceSnapshot,
-} from "./audio-source-selector.js";
+} from "./audio-source-selector.ts";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8000";
 
