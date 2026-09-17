@@ -14,7 +14,7 @@ This directory contains generated documentation about the project's architecture
 
 ## Reviews & Wireframes
 
-- **[code-reviews/](./code-reviews/)** — Code review summaries and analysis.
+- **[code-reviews/](./code-reviews/)** — Code review summaries and analysis, including [03: Record / Stop / Pause](./code-reviews/03-record-stop-pause.md).
 - **[wireframe/](./wireframe/)** — UI mockups and screen designs.
 
 ## Getting Started

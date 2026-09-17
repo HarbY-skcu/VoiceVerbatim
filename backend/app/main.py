@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
+from .recording import InvalidRecordingTransition, RecordingSession
 
 app = FastAPI(title="Voice-to-Text Notes")
 
@@ -16,6 +17,7 @@ app.add_middleware(
 SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 
 audio_registry = AudioSourceRegistry()
+recording_session = RecordingSession()
 
 
 @app.get("/api/sidebar/tabs")
@@ -56,3 +58,36 @@ def set_active_audio_source(payload: SetActiveAudioSourceIn):
         raise HTTPException(
             status_code=400, detail=f"Unknown audio source: {payload.id}"
         )
+
+
+@app.get("/api/recording")
+def get_recording_state():
+    return {"state": recording_session.state}
+
+
+def _transition(action):
+    try:
+        state = action()
+    except InvalidRecordingTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"state": state}
+
+
+@app.post("/api/recording/start")
+def start_recording():
+    return _transition(recording_session.start)
+
+
+@app.post("/api/recording/pause")
+def pause_recording():
+    return _transition(recording_session.pause)
+
+
+@app.post("/api/recording/resume")
+def resume_recording():
+    return _transition(recording_session.resume)
+
+
+@app.post("/api/recording/stop")
+def stop_recording():
+    return _transition(recording_session.stop)
