@@ -70,4 +70,36 @@ describe("Shell & Navigation Frame", () => {
       container.querySelector("[data-region='recording-toolbar']")
     ).not.toBeNull();
   });
+
+  it("triggers Navigation Stop when switching away to another tab", () => {
+    const calls: string[] = [];
+    const notifier = {
+      navigationStop: async () => {
+        calls.push("navigationStop");
+        return { state: "idle" };
+      },
+    };
+    const shell = new Shell(container, notifier);
+    shell.render();
+
+    (container.querySelector('[data-tab="Bookmarks"]') as HTMLElement).click();
+
+    expect(calls).toEqual(["navigationStop"]);
+  });
+
+  it("does not trigger Navigation Stop when clicking the already-active tab", () => {
+    const calls: string[] = [];
+    const notifier = {
+      navigationStop: async () => {
+        calls.push("navigationStop");
+        return { state: "idle" };
+      },
+    };
+    const shell = new Shell(container, notifier);
+    shell.render();
+
+    (container.querySelector('[data-tab="All Notes"]') as HTMLElement).click();
+
+    expect(calls).toEqual([]);
+  });
 });

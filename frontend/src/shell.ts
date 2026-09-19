@@ -1,10 +1,22 @@
 const TABS = ["All Notes", "Bookmarks"] as const;
 type Tab = (typeof TABS)[number];
 
+/**
+ * Anything the Shell needs to trigger when the user navigates away from the
+ * current Note view. Kept minimal (just the one method) so the Shell isn't
+ * coupled to the full RecordingClient surface.
+ */
+export interface NavigationStopNotifier {
+  navigationStop(): Promise<unknown>;
+}
+
 export class Shell {
   private activeTab: Tab = "All Notes";
 
-  constructor(private readonly root: HTMLElement) {}
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly navigationNotifier?: NavigationStopNotifier
+  ) {}
 
   render(): void {
     this.root.innerHTML = this.html();
@@ -34,7 +46,13 @@ export class Shell {
   private attachEvents(): void {
     this.root.querySelectorAll("[data-tab]").forEach((el) => {
       el.addEventListener("click", () => {
-        this.activeTab = el.getAttribute("data-tab") as Tab;
+        const nextTab = el.getAttribute("data-tab") as Tab;
+        if (nextTab === this.activeTab) {
+          return;
+        }
+        this.activeTab = nextTab;
+        // Switching sidebar tabs navigates away from the current Note view.
+        this.navigationNotifier?.navigationStop();
         this.render();
       });
     });

@@ -16,6 +16,14 @@ export interface RecordingClient {
   pause(): Promise<RecordingSnapshot>;
   resume(): Promise<RecordingSnapshot>;
   stop(): Promise<RecordingSnapshot>;
+  /** Reports a transcribed speech event, resetting the Silence Timeout window. */
+  notifySpeech(): Promise<void>;
+  /**
+   * Called when the user navigates away from the current Note view while a
+   * Recording may be active. Behaves identically to a manual Stop; a no-op
+   * if nothing is active.
+   */
+  navigationStop(): Promise<RecordingSnapshot>;
 }
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8000";
@@ -44,6 +52,14 @@ export class HttpRecordingClient implements RecordingClient {
 
   stop(): Promise<RecordingSnapshot> {
     return this.post("/api/recording/stop");
+  }
+
+  async notifySpeech(): Promise<void> {
+    await fetch(`${this.baseUrl}/api/recording/speech`, { method: "POST" });
+  }
+
+  navigationStop(): Promise<RecordingSnapshot> {
+    return this.post("/api/recording/navigation-stop");
   }
 
   private async post(path: string): Promise<RecordingSnapshot> {

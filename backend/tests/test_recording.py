@@ -2,12 +2,13 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import app, recording_session, audio_registry
+from backend.app.main import app, recording_session, audio_registry, silence_monitor
 
 client = TestClient(app)
 
 
 def setup_function():
+    silence_monitor.cancel()
     asyncio.run(recording_session.reset())
     asyncio.run(audio_registry.clear())
     asyncio.run(

@@ -5,7 +5,8 @@ import { RecordingControls } from "./recording-controls.ts";
 import { HttpRecordingClient } from "./recording-client.ts";
 
 const root = document.getElementById("app")!;
-const shell = new Shell(root);
+const recordingClient = new HttpRecordingClient();
+const shell = new Shell(root, recordingClient);
 shell.render();
 
 const toolbar = root.querySelector(
@@ -23,7 +24,7 @@ if (toolbar) {
       audioSourceRegion.innerHTML = `<p style="color: red; padding: 8px;">Error: ${err.message}</p>`;
     });
 
-  new RecordingControls(recordingRegion, new HttpRecordingClient())
+  new RecordingControls(recordingRegion, recordingClient)
     .render()
     .catch((err) => {
       console.error("Failed to load recording state:", err);

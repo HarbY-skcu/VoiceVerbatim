@@ -46,6 +46,17 @@ class FakeRecordingClient implements RecordingClient {
     return this.transition("stop", "idle");
   }
 
+  async notifySpeech(): Promise<void> {
+    this.calls.push("notifySpeech");
+  }
+
+  async navigationStop(): Promise<RecordingSnapshot> {
+    if (this.state === "idle") {
+      return { state: this.state };
+    }
+    return this.transition("navigationStop", "idle");
+  }
+
   private async transition(
     name: string,
     nextState: RecordingState

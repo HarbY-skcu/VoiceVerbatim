@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
 from .recording import InvalidRecordingTransition, RecordingSession
+from .silence_timeout import SilenceTimeoutMonitor
 
 app = FastAPI(title="Voice-to-Text Notes")
 
@@ -18,6 +19,18 @@ SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 
 audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
+
+
+async def _on_silence_timeout() -> None:
+    """Fires when 15s pass with no transcribed speech during an active
+    Recording. Behaves identically to a manual Stop."""
+    try:
+        await recording_session.stop()
+    except InvalidRecordingTransition:
+        pass
+
+
+silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
 
 
 @app.get("/api/sidebar/tabs")
@@ -75,19 +88,46 @@ async def _transition(action):
 
 @app.post("/api/recording/start")
 async def start_recording():
-    return await _transition(recording_session.start)
+    result = await _transition(recording_session.start)
+    silence_monitor.start()
+    return result
 
 
 @app.post("/api/recording/pause")
 async def pause_recording():
-    return await _transition(recording_session.pause)
+    # Mic is already off while paused, so Silence Timeout does not apply.
+    result = await _transition(recording_session.pause)
+    silence_monitor.cancel()
+    return result
 
 
 @app.post("/api/recording/resume")
 async def resume_recording():
-    return await _transition(recording_session.resume)
+    result = await _transition(recording_session.resume)
+    silence_monitor.start()
+    return result
 
 
 @app.post("/api/recording/stop")
 async def stop_recording():
+    silence_monitor.cancel()
+    return await _transition(recording_session.stop)
+
+
+@app.post("/api/recording/speech")
+async def notify_transcribed_speech():
+    """Called whenever new transcribed speech arrives during an active
+    Recording. Resets the Silence Timeout window."""
+    silence_monitor.notify_speech()
+    return {"state": recording_session.state}
+
+
+@app.post("/api/recording/navigation-stop")
+async def navigation_stop():
+    """Called when the user navigates away from the current Note view.
+    Behaves identically to a manual Stop. A no-op if no Recording is
+    active, since navigating away with nothing running is not an error."""
+    if recording_session.state == "idle":
+        return {"state": recording_session.state}
+    silence_monitor.cancel()
     return await _transition(recording_session.stop)
