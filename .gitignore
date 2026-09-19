@@ -1,2 +1,3 @@
 # Claude Code worktrees — isolated checkouts, never part of the repo
 .claude/worktrees/
+.idea/

@@ -1,10 +1,19 @@
+import base64
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .audio_buffer import AudioBuffer
 from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
+from .note import ActiveNote
 from .recording import InvalidRecordingTransition, RecordingSession
+<<<<<<< HEAD
 from .silence_timeout import SilenceTimeoutMonitor
+=======
+from .transcription import TranscriptionError
+from .transcription_pipeline import TranscriptionPipeline
+>>>>>>> feature-4
 
 app = FastAPI(title="Voice-to-Text Notes")
 
@@ -21,6 +30,7 @@ audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
 
+<<<<<<< HEAD
 async def _on_silence_timeout() -> None:
     """Fires when 15s pass with no transcribed speech during an active
     Recording. Behaves identically to a manual Stop."""
@@ -31,6 +41,25 @@ async def _on_silence_timeout() -> None:
 
 
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
+=======
+class UnconfiguredTranscriptionService:
+    """Default transcription backend until a real one is wired in.
+
+    Ticket 04 owns the pipeline (buffer -> transcribe -> insert -> save);
+    the actual speech-to-text integration is out of scope here, so the
+    default surfaces a clear, non-corrupting error instead of pretending
+    to transcribe.
+    """
+
+    async def transcribe(self, audio: bytes) -> str:
+        raise TranscriptionError("Transcription service not configured")
+
+
+note = ActiveNote()
+pipeline = TranscriptionPipeline(
+    buffer=AudioBuffer(), note=note, service=UnconfiguredTranscriptionService()
+)
+>>>>>>> feature-4
 
 
 @app.get("/api/sidebar/tabs")
@@ -49,6 +78,10 @@ class RegisterAudioSourcesIn(BaseModel):
 
 class SetActiveAudioSourceIn(BaseModel):
     id: str
+
+
+class AudioChunkIn(BaseModel):
+    data: str
 
 
 @app.get("/api/audio/sources")
@@ -78,12 +111,21 @@ def get_recording_state():
     return {"state": recording_session.state}
 
 
-async def _transition(action):
+async def _transition(action, *, with_transcription: bool = False):
     try:
         state = await action()
     except InvalidRecordingTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    return {"state": state}
+    result = {"state": state}
+    if with_transcription:
+        result["transcription"] = await pipeline.flush_and_transcribe()
+    return result
+
+
+@app.post("/api/recording/audio-chunk")
+async def append_audio_chunk(payload: AudioChunkIn):
+    pipeline.buffer.append(base64.b64decode(payload.data))
+    return {"ok": True}
 
 
 @app.post("/api/recording/start")
@@ -95,10 +137,16 @@ async def start_recording():
 
 @app.post("/api/recording/pause")
 async def pause_recording():
+<<<<<<< HEAD
     # Mic is already off while paused, so Silence Timeout does not apply.
     result = await _transition(recording_session.pause)
     silence_monitor.cancel()
     return result
+=======
+    # Pause flushes the current audio buffer for transcription (ticket 04);
+    # Resume then starts against an empty buffer.
+    return await _transition(recording_session.pause, with_transcription=True)
+>>>>>>> feature-4
 
 
 @app.post("/api/recording/resume")
@@ -110,6 +158,7 @@ async def resume_recording():
 
 @app.post("/api/recording/stop")
 async def stop_recording():
+<<<<<<< HEAD
     silence_monitor.cancel()
     return await _transition(recording_session.stop)
 
@@ -131,3 +180,6 @@ async def navigation_stop():
         return {"state": recording_session.state}
     silence_monitor.cancel()
     return await _transition(recording_session.stop)
+=======
+    return await _transition(recording_session.stop, with_transcription=True)
+>>>>>>> feature-4
