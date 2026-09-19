@@ -49,7 +49,10 @@ def test_pause_stops_the_mic_and_enables_editing():
     response = client.post("/api/recording/pause")
 
     assert response.status_code == 200
-    assert response.json() == {"state": "paused"}
+    assert response.json() == {
+        "state": "paused",
+        "transcription": {"inserted": None, "error": None},
+    }
 
 
 def test_pausing_when_not_recording_is_rejected():
@@ -84,7 +87,10 @@ def test_stop_ends_the_session_and_returns_to_idle():
     response = client.post("/api/recording/stop")
 
     assert response.status_code == 200
-    assert response.json() == {"state": "idle"}
+    assert response.json() == {
+        "state": "idle",
+        "transcription": {"inserted": None, "error": None},
+    }
     assert client.get("/api/recording").json() == {"state": "idle"}
 
 
@@ -95,7 +101,10 @@ def test_stop_from_paused_also_ends_the_session():
     response = client.post("/api/recording/stop")
 
     assert response.status_code == 200
-    assert response.json() == {"state": "idle"}
+    assert response.json() == {
+        "state": "idle",
+        "transcription": {"inserted": None, "error": None},
+    }
 
 
 def test_stopping_when_idle_is_rejected():
