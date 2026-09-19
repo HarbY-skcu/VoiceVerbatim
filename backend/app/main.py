@@ -44,16 +44,16 @@ def get_audio_sources():
 
 
 @app.put("/api/audio/sources")
-def register_audio_sources(payload: RegisterAudioSourcesIn):
-    return audio_registry.register(
+async def register_audio_sources(payload: RegisterAudioSourcesIn):
+    return await audio_registry.register(
         [AudioSource(id=s.id, label=s.label) for s in payload.sources]
     )
 
 
 @app.put("/api/audio/sources/active")
-def set_active_audio_source(payload: SetActiveAudioSourceIn):
+async def set_active_audio_source(payload: SetActiveAudioSourceIn):
     try:
-        return audio_registry.set_active(payload.id)
+        return await audio_registry.set_active(payload.id)
     except UnknownAudioSource:
         raise HTTPException(
             status_code=400, detail=f"Unknown audio source: {payload.id}"
@@ -65,29 +65,29 @@ def get_recording_state():
     return {"state": recording_session.state}
 
 
-def _transition(action):
+async def _transition(action):
     try:
-        state = action()
+        state = await action()
     except InvalidRecordingTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"state": state}
 
 
 @app.post("/api/recording/start")
-def start_recording():
-    return _transition(recording_session.start)
+async def start_recording():
+    return await _transition(recording_session.start)
 
 
 @app.post("/api/recording/pause")
-def pause_recording():
-    return _transition(recording_session.pause)
+async def pause_recording():
+    return await _transition(recording_session.pause)
 
 
 @app.post("/api/recording/resume")
-def resume_recording():
-    return _transition(recording_session.resume)
+async def resume_recording():
+    return await _transition(recording_session.resume)
 
 
 @app.post("/api/recording/stop")
-def stop_recording():
-    return _transition(recording_session.stop)
+async def stop_recording():
+    return await _transition(recording_session.stop)

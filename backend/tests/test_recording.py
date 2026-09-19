@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from backend.app.main import app, recording_session, audio_registry
@@ -6,14 +8,16 @@ client = TestClient(app)
 
 
 def setup_function():
-    recording_session.reset()
-    audio_registry.clear()
-    audio_registry.register(
-        [
-            __import__(
-                "backend.app.audio_sources", fromlist=["AudioSource"]
-            ).AudioSource(id="default", label="Default Mic")
-        ]
+    asyncio.run(recording_session.reset())
+    asyncio.run(audio_registry.clear())
+    asyncio.run(
+        audio_registry.register(
+            [
+                __import__(
+                    "backend.app.audio_sources", fromlist=["AudioSource"]
+                ).AudioSource(id="default", label="Default Mic")
+            ]
+        )
     )
 
 

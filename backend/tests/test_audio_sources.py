@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from backend.app.main import app, audio_registry
@@ -6,7 +8,7 @@ client = TestClient(app)
 
 
 def setup_function():
-    audio_registry.clear()
+    asyncio.run(audio_registry.clear())
 
 
 def test_get_audio_sources_is_empty_before_any_are_registered():

@@ -5,9 +5,15 @@ registers them here. From that point on the backend is the single authority on
 which Audio Source is active: it picks the default, validates every change, and
 holds the selection while the app is open. The frontend only displays what this
 registry reports.
+
+Registration and activation are async and serialised through an internal
+asyncio.Lock, so a device list refresh racing against an activation (or against
+concurrent audio streaming elsewhere in the system) can't leave the registry in
+an inconsistent state.
 """
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -24,10 +30,12 @@ class AudioSourceRegistry:
     def __init__(self) -> None:
         self._sources: list[AudioSource] = []
         self._active: str | None = None
+        self._lock = asyncio.Lock()
 
-    def clear(self) -> None:
-        self._sources = []
-        self._active = None
+    async def clear(self) -> None:
+        async with self._lock:
+            self._sources = []
+            self._active = None
 
     def snapshot(self) -> dict:
         return {
@@ -35,23 +43,25 @@ class AudioSourceRegistry:
             "active": self._active,
         }
 
-    def register(self, sources: list[AudioSource]) -> dict:
+    async def register(self, sources: list[AudioSource]) -> dict:
         """Replace the known device list and (re)resolve the active source.
 
         A selection already in effect is preserved if the device is still
         present; otherwise the backend falls back to the default.
         """
-        self._sources = list(sources)
-        present = {s.id for s in self._sources}
-        if self._active not in present:
-            self._active = self._default_source_id()
-        return self.snapshot()
+        async with self._lock:
+            self._sources = list(sources)
+            present = {s.id for s in self._sources}
+            if self._active not in present:
+                self._active = self._default_source_id()
+            return self.snapshot()
 
-    def set_active(self, source_id: str) -> dict:
-        if source_id not in {s.id for s in self._sources}:
-            raise UnknownAudioSource(source_id)
-        self._active = source_id
-        return self.snapshot()
+    async def set_active(self, source_id: str) -> dict:
+        async with self._lock:
+            if source_id not in {s.id for s in self._sources}:
+                raise UnknownAudioSource(source_id)
+            self._active = source_id
+            return self.snapshot()
 
     def _default_source_id(self) -> str | None:
         for source in self._sources:
