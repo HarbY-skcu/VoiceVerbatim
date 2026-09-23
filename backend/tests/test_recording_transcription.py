@@ -10,7 +10,7 @@ import base64
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import app, recording_session, audio_registry, note, pipeline
+from backend.app.main import app, recording_session, audio_registry, note, pipeline, streaming_orchestrator
 from backend.app.transcription import TranscriptionError
 
 client = TestClient(app)
@@ -35,6 +35,12 @@ def setup_function():
     note.saved_text = None
     pipeline.buffer.flush()
     pipeline.service = FakeTranscriptionService()
+    # A previous test module (e.g. test_recording_stream_ws.py) may have
+    # left the shared streaming_orchestrator holding a session/consume task
+    # bound to its own already-closed event loop; without this, /pause and
+    # /stop here would try to await that stale task and raise a spurious
+    # CancelledError unrelated to anything under test in this module.
+    streaming_orchestrator.reset()
 
 
 def send_audio(chunk: bytes):

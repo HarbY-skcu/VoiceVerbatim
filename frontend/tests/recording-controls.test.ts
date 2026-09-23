@@ -6,6 +6,7 @@ import type {
   RecordingState,
 } from "../src/recording-client";
 import { RecordingRejected } from "../src/recording-client";
+import type { MicStreamer } from "../src/mic-stream";
 
 /**
  * A stand-in for the backend Recording state machine. Records which
@@ -69,6 +70,19 @@ class FakeRecordingClient implements RecordingClient {
     }
     this.state = nextState;
     return { state: this.state };
+  }
+}
+
+/** A stand-in for MicWebSocketStreamer: records start/stop calls without touching real mic/socket APIs. */
+class FakeMicStreamer implements MicStreamer {
+  calls: string[] = [];
+
+  async start(): Promise<void> {
+    this.calls.push("start");
+  }
+
+  async stop(): Promise<void> {
+    this.calls.push("stop");
   }
 }
 
@@ -151,6 +165,67 @@ describe("Record / Stop / Pause controls", () => {
     await controls.render();
 
     expect(controls.isTextEditable).toBe(false);
+  });
+
+  it("starts the mic streamer when Record is clicked", async () => {
+    const client = new FakeRecordingClient("idle");
+    const mic = new FakeMicStreamer();
+    const controls = new RecordingControls(container, client, mic);
+    await controls.render();
+
+    (container.querySelector('[data-action="record"]') as HTMLElement).click();
+    await flush();
+
+    expect(mic.calls).toEqual(["start"]);
+  });
+
+  it("starts the mic streamer when Resume is clicked", async () => {
+    const client = new FakeRecordingClient("paused");
+    const mic = new FakeMicStreamer();
+    const controls = new RecordingControls(container, client, mic);
+    await controls.render();
+
+    (container.querySelector('[data-action="resume"]') as HTMLElement).click();
+    await flush();
+
+    expect(mic.calls).toEqual(["start"]);
+  });
+
+  it("stops the mic streamer when Pause is clicked", async () => {
+    const client = new FakeRecordingClient("recording");
+    const mic = new FakeMicStreamer();
+    const controls = new RecordingControls(container, client, mic);
+    await controls.render();
+
+    (container.querySelector('[data-action="pause"]') as HTMLElement).click();
+    await flush();
+
+    expect(mic.calls).toEqual(["stop"]);
+  });
+
+  it("stops the mic streamer when Stop is clicked", async () => {
+    const client = new FakeRecordingClient("recording");
+    const mic = new FakeMicStreamer();
+    const controls = new RecordingControls(container, client, mic);
+    await controls.render();
+
+    (container.querySelector('[data-action="stop"]') as HTMLElement).click();
+    await flush();
+
+    expect(mic.calls).toEqual(["stop"]);
+  });
+
+  it("does not touch the mic streamer when a transition is rejected", async () => {
+    const client = new FakeRecordingClient("idle");
+    client.rejectNextTransitionWith("Cannot start: a Recording is already recording");
+    const mic = new FakeMicStreamer();
+    const controls = new RecordingControls(container, client, mic);
+    await controls.render();
+
+    (container.querySelector('[data-action="record"]') as HTMLElement).click();
+    await flush();
+
+    expect(mic.calls).toEqual([]);
   });
 
   it("a rejected transition leaves the displayed state unchanged", async () => {
