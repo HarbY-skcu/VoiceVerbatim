@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import app, recording_session, audio_registry, silence_monitor
+from backend.app.main import app, recording_session, audio_registry, silence_monitor, streaming_orchestrator
 
 client = TestClient(app)
 
@@ -11,6 +11,10 @@ def setup_function():
     silence_monitor.cancel()
     asyncio.run(recording_session.reset())
     asyncio.run(audio_registry.clear())
+    # See test_recording_transcription.py's setup_function for why this is
+    # needed: the shared streaming_orchestrator can hold state from a
+    # previous test module's event loop.
+    streaming_orchestrator.reset()
     asyncio.run(
         audio_registry.register(
             [
