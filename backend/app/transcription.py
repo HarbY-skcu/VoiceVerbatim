@@ -1,13 +1,10 @@
 """Transcription service seams.
 
-`TranscriptionService` (ticket 04) is a `Protocol` so the batch pipeline can
-be tested against a fake without a real speech-to-text backend.
-
-`StreamingTranscriptionService` (ticket 04.1) is the real-time counterpart:
-rather than one whole-blob call, it opens a session that accepts audio
-chunks as they arrive and yields `StreamingResult`s (interim, then a final)
-as the engine's guess firms up. Concrete implementations (the actual
-model/API calls) are wired in later — out of scope here.
+`StreamingTranscriptionService` is the sole transcription seam: it opens a
+session that accepts audio chunks as they arrive and yields
+`StreamingResult`s (interim, then a final) as the engine's guess firms up.
+There is no separate one-shot/batch protocol — a single audio chunk in,
+text out, looped for the lifetime of a Recording.
 """
 
 from dataclasses import dataclass
@@ -16,10 +13,6 @@ from typing import AsyncIterator, Protocol
 
 class TranscriptionError(Exception):
     """Raised when audio cannot be transcribed. Never corrupts the Note."""
-
-
-class TranscriptionService(Protocol):
-    async def transcribe(self, audio: bytes) -> str: ...
 
 
 @dataclass(frozen=True)

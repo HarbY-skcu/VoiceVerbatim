@@ -102,3 +102,54 @@ async def test_implicit_pause_closes_the_session_without_forcing_a_final():
 
     assert session.closed
     assert note.text == "hello wor"
+
+
+async def test_send_audio_with_no_open_session_is_silently_dropped():
+    """Regression test: the frontend keeps its WebSocket open across
+    Pause/Resume and only closes/reopens it after the Pause request
+    completes, so a trailing MediaRecorder chunk can arrive after
+    orchestrator.stop() has already closed the session. That's an
+    expected race, not an error -- send_audio() must drop the chunk
+    quietly rather than raising and crashing the WebSocket connection.
+    """
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+    await orchestrator.start()
+    await session.finish()
+    await orchestrator.stop()
+
+    # No session is open anymore; this must not raise.
+    await orchestrator.send_audio(b"trailing-chunk")
+
+    assert session.sent == []
+
+
+async def test_concurrent_stop_and_send_audio_do_not_interleave():
+    """Regression test: a concurrent Pause/Stop/Navigation-Stop request
+    (which calls orchestrator.stop(), closing the session and tearing down
+    its underlying transport) used to be able to race a WebSocket handler's
+    in-flight send_audio() call, letting send_audio() reach a session that
+    close() had already torn down mid-call (surfaced as
+    ConnectionResetError against the real ffmpeg subprocess). The
+    orchestrator's lock must serialize these so send_audio() either
+    completes fully before close() starts, or sees `_session is None`
+    afterwards -- never a partially-closed session.
+    """
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+    await orchestrator.start()
+
+    send_task = asyncio.create_task(orchestrator.send_audio(b"chunk-1"))
+    stop_task = asyncio.create_task(orchestrator.stop())
+    await asyncio.gather(send_task, stop_task, return_exceptions=False)
+
+    assert session.closed
+    # Whichever won the race, send_audio() ran to completion (appended the
+    # chunk) rather than being interrupted mid-call by close().
+    assert session.sent == [b"chunk-1"]

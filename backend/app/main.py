@@ -1,25 +1,13 @@
-import asyncio
-import base64
-
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .audio_buffer import AudioBuffer
 from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
 from .note import ActiveNote
 from .recording import InvalidRecordingTransition, RecordingSession
 from .silence_timeout import SilenceTimeoutMonitor
-<<<<<<< HEAD
-from .transcription import TranscriptionError
-=======
 from .streaming_orchestrator import StreamingTranscriptionOrchestrator
-from .transcription import (
-    StreamingTranscriptionSession,
-    TranscriptionError,
-)
->>>>>>> Feature-4.1
-from .transcription_pipeline import TranscriptionPipeline
+from .vosk_transcription import VoskStreamingTranscriptionService, _load_model
 
 app = FastAPI(title="Voice-to-Text Notes")
 
@@ -35,10 +23,7 @@ SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
-<<<<<<< HEAD
-=======
 
->>>>>>> Feature-4.1
 async def _on_silence_timeout() -> None:
     """Fires when 15s pass with no transcribed speech during an active
     Recording. Behaves identically to a manual Stop."""
@@ -49,58 +34,22 @@ async def _on_silence_timeout() -> None:
 
 
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
-<<<<<<< HEAD
-=======
-
-
->>>>>>> Feature-4.1
-class UnconfiguredTranscriptionService:
-    """Default transcription backend until a real one is wired in.
-
-    Ticket 04 owns the pipeline (buffer -> transcribe -> insert -> save);
-    the actual speech-to-text integration is out of scope here, so the
-    default surfaces a clear, non-corrupting error instead of pretending
-    to transcribe.
-    """
-
-    async def transcribe(self, audio: bytes) -> str:
-        raise TranscriptionError("Transcription service not configured")
-
-
-class UnconfiguredStreamingTranscriptionSession:
-    """Session used until a real streaming speech-to-text backend is wired
-    in. Accepts audio silently (per ticket 04.1's scope: the mic->socket
-    path is landed end-to-end, but nothing consumes the audio yet) and
-    never yields a result.
-    """
-
-    async def send_audio(self, chunk: bytes) -> None:
-        pass
-
-    async def results(self):
-        return
-        yield  # pragma: no cover - makes this an async generator
-
-    async def close(self) -> None:
-        pass
-
-
-class UnconfiguredStreamingTranscriptionService:
-    async def start_session(self) -> StreamingTranscriptionSession:
-        return UnconfiguredStreamingTranscriptionSession()
 
 
 note = ActiveNote()
-pipeline = TranscriptionPipeline(
-    buffer=AudioBuffer(), note=note, service=UnconfiguredTranscriptionService()
-)
-<<<<<<< HEAD
-=======
 streaming_orchestrator = StreamingTranscriptionOrchestrator(
-    note=note, service=UnconfiguredStreamingTranscriptionService()
+    note=note, service=VoskStreamingTranscriptionService()
 )
 
->>>>>>> Feature-4.1
+
+@app.on_event("startup")
+async def _preload_vosk_model() -> None:
+    """Loads the (multi-GB) Vosk model once at process startup, off the
+    event loop, so the first /api/recording/start call isn't the one that
+    pays the multi-second/minute parsing cost."""
+    import asyncio
+
+    await asyncio.to_thread(_load_model)
 
 @app.get("/api/sidebar/tabs")
 def get_sidebar_tabs():
@@ -118,10 +67,6 @@ class RegisterAudioSourcesIn(BaseModel):
 
 class SetActiveAudioSourceIn(BaseModel):
     id: str
-
-
-class AudioChunkIn(BaseModel):
-    data: str
 
 
 @app.get("/api/audio/sources")
@@ -151,25 +96,12 @@ def get_recording_state():
     return {"state": recording_session.state}
 
 
-async def _transition(action, *, with_transcription: bool = False):
+async def _transition(action):
     try:
         state = await action()
     except InvalidRecordingTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    result = {"state": state}
-    if with_transcription:
-        result["transcription"] = await pipeline.flush_and_transcribe()
-    return result
-
-
-@app.post("/api/recording/audio-chunk")
-async def append_audio_chunk(payload: AudioChunkIn):
-    """Legacy batch ingest, kept for the buffered path (ticket 04) while the
-    real-time streaming path (ticket 04.1, `/api/recording/stream`) is the
-    seam new clients should use.
-    """
-    pipeline.buffer.append(base64.b64decode(payload.data))
-    return {"ok": True}
+    return {"state": state}
 
 
 async def _implicit_pause_from_stream_drop() -> None:
@@ -188,10 +120,9 @@ async def _implicit_pause_from_stream_drop() -> None:
 
 @app.websocket("/api/recording/stream")
 async def stream_audio(websocket: WebSocket):
-    """Real-time audio ingest (ticket 04.1), replacing the buffered
-    /api/recording/audio-chunk POST for streaming clients. Only accepts
-    frames while a Recording is active; closing the socket (deliberately or
-    via a dropped connection) is treated as an implicit Pause.
+    """Real-time audio ingest. Only accepts frames while a Recording is
+    active; closing the socket (deliberately or via a dropped connection)
+    is treated as an implicit Pause.
     """
     if recording_session.state != "recording":
         await websocket.close(code=4409, reason="No active Recording")
@@ -230,20 +161,12 @@ async def start_recording():
 @app.post("/api/recording/pause")
 async def pause_recording():
     # Mic is already off while paused, so Silence Timeout does not apply.
-    # Pause also flushes the current audio buffer for transcription (ticket
-    # 04) and closes the streaming session without forcing a final result
-    # (ticket 04.1); Resume then starts fresh against both.
-    result = await _transition(recording_session.pause, with_transcription=True)
+    # Pause closes the streaming session, force-finalizing any trailing
+    # partial utterance so it isn't lost; Resume then opens a fresh session.
+    result = await _transition(recording_session.pause)
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
     return result
-<<<<<<< HEAD
-# Pause flushes the current audio buffer for transcription (ticket 04);
-    # Resume then starts against an empty buffer.
-    return await _transition(recording_session.pause, with_transcription=True)
-=======
-
->>>>>>> Feature-4.1
 
 @app.post("/api/recording/resume")
 async def resume_recording():
@@ -257,7 +180,7 @@ async def resume_recording():
 async def stop_recording():
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
-    return await _transition(recording_session.stop, with_transcription=True)
+    return await _transition(recording_session.stop)
 
 
 @app.post("/api/recording/speech")
@@ -276,10 +199,5 @@ async def navigation_stop():
     if recording_session.state == "idle":
         return {"state": recording_session.state}
     silence_monitor.cancel()
-<<<<<<< HEAD
-    return await _transition(recording_session.stop)
-    return await _transition(recording_session.stop, with_transcription=True)
-=======
     await streaming_orchestrator.stop()
-    return await _transition(recording_session.stop, with_transcription=True)
->>>>>>> Feature-4.1
+    return await _transition(recording_session.stop)

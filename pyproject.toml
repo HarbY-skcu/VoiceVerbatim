@@ -1,3 +1,7 @@
 [project]
-name = "project1-beans"
-dependencies = ["beans"]
+name = "your-project-name"
+version = "0.1.0"
+description = "A short description of your project"
+dependencies = [
+    "vosk>=0.3.45",
+]
