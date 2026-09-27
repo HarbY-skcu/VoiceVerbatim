@@ -10,15 +10,12 @@ from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
 from .note import ActiveNote
 from .recording import InvalidRecordingTransition, RecordingSession
 from .silence_timeout import SilenceTimeoutMonitor
-<<<<<<< HEAD
 from .transcription import TranscriptionError
-=======
 from .streaming_orchestrator import StreamingTranscriptionOrchestrator
 from .transcription import (
     StreamingTranscriptionSession,
     TranscriptionError,
 )
->>>>>>> Feature-4.1
 from .transcription_pipeline import TranscriptionPipeline
 
 app = FastAPI(title="Voice-to-Text Notes")
@@ -35,10 +32,6 @@ SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
-<<<<<<< HEAD
-=======
-
->>>>>>> Feature-4.1
 async def _on_silence_timeout() -> None:
     """Fires when 15s pass with no transcribed speech during an active
     Recording. Behaves identically to a manual Stop."""
@@ -49,11 +42,8 @@ async def _on_silence_timeout() -> None:
 
 
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
-<<<<<<< HEAD
-=======
 
 
->>>>>>> Feature-4.1
 class UnconfiguredTranscriptionService:
     """Default transcription backend until a real one is wired in.
 
@@ -94,13 +84,9 @@ note = ActiveNote()
 pipeline = TranscriptionPipeline(
     buffer=AudioBuffer(), note=note, service=UnconfiguredTranscriptionService()
 )
-<<<<<<< HEAD
-=======
 streaming_orchestrator = StreamingTranscriptionOrchestrator(
     note=note, service=UnconfiguredStreamingTranscriptionService()
 )
-
->>>>>>> Feature-4.1
 
 @app.get("/api/sidebar/tabs")
 def get_sidebar_tabs():
@@ -237,13 +223,6 @@ async def pause_recording():
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
     return result
-<<<<<<< HEAD
-# Pause flushes the current audio buffer for transcription (ticket 04);
-    # Resume then starts against an empty buffer.
-    return await _transition(recording_session.pause, with_transcription=True)
-=======
-
->>>>>>> Feature-4.1
 
 @app.post("/api/recording/resume")
 async def resume_recording():
@@ -276,10 +255,5 @@ async def navigation_stop():
     if recording_session.state == "idle":
         return {"state": recording_session.state}
     silence_monitor.cancel()
-<<<<<<< HEAD
-    return await _transition(recording_session.stop)
-    return await _transition(recording_session.stop, with_transcription=True)
-=======
     await streaming_orchestrator.stop()
     return await _transition(recording_session.stop, with_transcription=True)
->>>>>>> Feature-4.1

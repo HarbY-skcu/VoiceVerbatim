@@ -53,8 +53,21 @@ export class Shell {
         this.activeTab = nextTab;
         // Switching sidebar tabs navigates away from the current Note view.
         this.navigationNotifier?.navigationStop();
-        this.render();
+        // Only the tab-dependent regions (sidebar tab styling / note list) need
+        // to change here. A full re-render would replace the whole app-frame,
+        // including the main-pane and recording-toolbar footer -- destroying
+        // and orphaning the AudioSourceSelector/RecordingControls mounted
+        // into them by the caller, since nothing ever remounts them into the
+        // freshly created elements. Update in place instead.
+        this.updateActiveTabStyling();
       });
+    });
+  }
+
+  private updateActiveTabStyling(): void {
+    this.root.querySelectorAll("[data-tab]").forEach((el) => {
+      const tab = el.getAttribute("data-tab") as Tab;
+      el.classList.toggle("active", tab === this.activeTab);
     });
   }
 }
