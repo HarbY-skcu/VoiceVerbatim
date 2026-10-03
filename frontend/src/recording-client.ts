@@ -1,7 +1,22 @@
 export type RecordingState = "idle" | "recording" | "paused";
 
+/**
+ * The batch transcription result the backend inlines into Pause/Stop
+ * responses (ticket 04's `result["transcription"]`). Ticket 13 wires this
+ * up on the frontend for the first time -- previously present in every
+ * response but never read here. `inserted` is the text just committed to
+ * the Note (or null if nothing was buffered); `error` is a
+ * non-Note-corrupting transcription failure message, if any.
+ */
+export interface BatchTranscriptionResult {
+  inserted: string | null;
+  error: string | null;
+}
+
 export interface RecordingSnapshot {
   state: RecordingState;
+  /** Only present on Pause/Stop responses, which flush the audio buffer for transcription. */
+  transcription?: BatchTranscriptionResult;
 }
 
 /**

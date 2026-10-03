@@ -102,3 +102,87 @@ async def test_implicit_pause_closes_the_session_without_forcing_a_final():
 
     assert session.closed
     assert note.text == "hello wor"
+
+
+class FakeResultsChannel:
+    """Test double for the results-delivery channel (ticket 13), external
+    to production code per the Protocol + Fake* pattern used elsewhere."""
+
+    def __init__(self):
+        self.sent: list[tuple[str, bool]] = []
+
+    async def send(self, *, text: str, final: bool) -> None:
+        self.sent.append((text, final))
+
+
+async def test_results_are_forwarded_to_an_attached_results_channel():
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+    channel = FakeResultsChannel()
+    orchestrator.attach_results_channel(channel)
+    await orchestrator.start()
+
+    await session.push(StreamingResult(text="wor", final=False))
+    await asyncio.sleep(0)
+
+    assert channel.sent == [("wor", False)]
+
+    await session.push(StreamingResult(text="world", final=True))
+    await session.finish()
+    await orchestrator.stop_consuming()
+
+    assert channel.sent == [("wor", False), ("world", True)]
+
+
+async def test_results_channel_is_detached_once_a_final_result_is_forwarded():
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+    channel = FakeResultsChannel()
+    orchestrator.attach_results_channel(channel)
+    await orchestrator.start()
+
+    await session.push(StreamingResult(text="world", final=True))
+    await session.finish()
+    await orchestrator.stop_consuming()
+
+    assert orchestrator.has_results_channel is False
+
+
+async def test_results_channel_stays_attached_across_pause_and_resume():
+    """Only a forwarded final result detaches the channel -- Pause/stop()
+    with no pending final must not clear it, so the same channel keeps
+    receiving results from a subsequent Resume's new session."""
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+    channel = FakeResultsChannel()
+    orchestrator.attach_results_channel(channel)
+    await orchestrator.start()
+    await session.push(StreamingResult(text="wor", final=False))
+    await asyncio.sleep(0)
+
+    await orchestrator.stop()
+
+    assert orchestrator.has_results_channel is True
+
+
+async def test_has_results_channel_is_false_until_one_is_attached():
+    note = ActiveNote()
+    session = FakeStreamingSession()
+    orchestrator = StreamingTranscriptionOrchestrator(
+        note=note, service=FakeStreamingService(session)
+    )
+
+    assert orchestrator.has_results_channel is False
+
+    orchestrator.attach_results_channel(FakeResultsChannel())
+
+    assert orchestrator.has_results_channel is True

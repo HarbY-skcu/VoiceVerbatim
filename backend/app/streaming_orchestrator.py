@@ -15,9 +15,21 @@ disconnects.
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from .note import ActiveNote
 from .transcription import StreamingTranscriptionService, StreamingTranscriptionSession
+
+
+class ResultsChannel(Protocol):
+    """Destination for streaming transcription results (ticket 13).
+
+    Implementations forward each result onward (e.g. over a WebSocket);
+    the orchestrator only ever calls `send`, never touches the underlying
+    transport itself.
+    """
+
+    async def send(self, *, text: str, final: bool) -> None: ...
 
 
 @dataclass
@@ -26,6 +38,31 @@ class StreamingTranscriptionOrchestrator:
     service: StreamingTranscriptionService
     _session: StreamingTranscriptionSession | None = field(default=None, init=False)
     _consume_task: asyncio.Task | None = field(default=None, init=False)
+    _results_channel: ResultsChannel | None = field(default=None, init=False)
+
+    @property
+    def has_results_channel(self) -> bool:
+        """Whether a results-delivery channel (ticket 13) is attached.
+
+        `/api/recording/stream` refuses to accept audio unless this is
+        true: streaming with nowhere for results to go is an error
+        condition, not silently tolerated.
+        """
+        return self._results_channel is not None
+
+    def attach_results_channel(self, channel: ResultsChannel) -> None:
+        """Register the channel results are forwarded to as they arrive.
+
+        Persists across Pause/Resume (a new session's results keep
+        flowing to the same channel); only detached explicitly, e.g. when
+        the channel closes itself after forwarding a final result.
+        """
+        self._results_channel = channel
+
+    def detach_results_channel(self, channel: ResultsChannel) -> None:
+        """Clear the channel, but only if it's still the current one."""
+        if self._results_channel is channel:
+            self._results_channel = None
 
     async def start(self) -> None:
         """Open a new streaming session and begin consuming its results."""
@@ -73,3 +110,8 @@ class StreamingTranscriptionOrchestrator:
         assert self._session is not None
         async for result in self._session.results():
             self.note.insert_streaming(result.text, final=result.final)
+            channel = self._results_channel
+            if channel is not None:
+                await channel.send(text=result.text, final=result.final)
+                if result.final:
+                    self._results_channel = None
