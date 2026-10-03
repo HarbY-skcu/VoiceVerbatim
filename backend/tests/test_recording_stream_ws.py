@@ -80,8 +80,25 @@ def test_stream_rejects_connection_when_not_recording():
     assert exc_info.value.code == 4409
 
 
+def test_stream_rejects_connection_when_no_results_channel_is_attached():
+    """Ticket 13: streaming audio with nobody listening for results is an
+    error condition, not silently tolerated -- /api/recording/results must
+    be connected first."""
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    client.post("/api/recording/start")
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/api/recording/stream"):
+            pass
+
+    assert exc_info.value.code == 4410
+
+
 def _connect_and_send(chunk: bytes) -> None:
-    """Open the stream, send one chunk, and close it cleanly.
+    """Open the results channel (required, ticket 13), then the stream,
+    send one chunk, and close both cleanly.
 
     Sends an explicit close frame (`ws.close()`) before the `with` block
     exits, exercising the same disconnect path the app sees in production
@@ -95,9 +112,11 @@ def _connect_and_send(chunk: bytes) -> None:
     mask a real failure.
     """
     try:
-        with client.websocket_connect("/api/recording/stream") as ws:
-            ws.send_bytes(chunk)
-            ws.close()
+        with client.websocket_connect("/api/recording/results") as results_ws:
+            with client.websocket_connect("/api/recording/stream") as ws:
+                ws.send_bytes(chunk)
+                ws.close()
+            results_ws.close()
     except BaseException as exc:
         if type(exc).__name__ != "CancelledError":
             raise

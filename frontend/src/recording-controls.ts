@@ -1,4 +1,4 @@
-import type { RecordingClient, RecordingState } from "./recording-client";
+import type { BatchTranscriptionResult, RecordingClient, RecordingState } from "./recording-client";
 import { RecordingRejected } from "./recording-client";
 import type { MicStreamer } from "./mic-stream";
 
@@ -11,12 +11,26 @@ import type { MicStreamer } from "./mic-stream";
  */
 export class RecordingControls {
   private state: RecordingState = "idle";
+  /**
+   * The most recent batch transcription result (ticket 13's fix for the
+   * dead `result["transcription"]` field, previously present on every
+   * Pause/Stop response but never read anywhere on the frontend). Each
+   * new Pause/Stop response overwrites this outright rather than
+   * appending -- it mirrors whatever the backend just committed to the
+   * Note, not a running log of every transcription attempt.
+   */
+  private lastTranscription: BatchTranscriptionResult | null = null;
 
   constructor(
     private readonly root: HTMLElement,
     private readonly client: RecordingClient,
     private readonly micStreamer?: MicStreamer
   ) {}
+
+  /** The most recently displayed batch transcription result, if any. */
+  get transcription(): BatchTranscriptionResult | null {
+    return this.lastTranscription;
+  }
 
   async render(): Promise<void> {
     const snapshot = await this.client.getState();
@@ -64,6 +78,12 @@ export class RecordingControls {
       try {
         const snapshot = await transition();
         this.state = snapshot.state;
+        // Pause/Stop responses carry a fresh batch transcription result;
+        // overwrite whatever was displayed before rather than appending,
+        // per the agreed "replace, don't accumulate" rule for this field.
+        if (snapshot.transcription !== undefined) {
+          this.lastTranscription = snapshot.transcription;
+        }
         if (this.micStreamer) {
           await this.syncMicStreamer();
         }

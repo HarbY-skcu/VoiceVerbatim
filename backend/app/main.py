@@ -12,7 +12,10 @@ from .recording import InvalidRecordingTransition, RecordingSession
 from .silence_timeout import SilenceTimeoutMonitor
 
 
+
 from .transcription import TranscriptionError
+
+
 from .streaming_orchestrator import StreamingTranscriptionOrchestrator
 from .transcription import (
     StreamingTranscriptionSession,
@@ -34,6 +37,10 @@ SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
+
+
+
+
 async def _on_silence_timeout() -> None:
     """Fires when 15s pass with no transcribed speech during an active
     Recording. Behaves identically to a manual Stop."""
@@ -44,6 +51,10 @@ async def _on_silence_timeout() -> None:
 
 
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
+
+
+
+
 
 class UnconfiguredTranscriptionService:
     """Default transcription backend until a real one is wired in.
@@ -88,6 +99,10 @@ pipeline = TranscriptionPipeline(
 streaming_orchestrator = StreamingTranscriptionOrchestrator(
     note=note, service=UnconfiguredStreamingTranscriptionService()
 )
+
+
+
+
 
 @app.get("/api/sidebar/tabs")
 def get_sidebar_tabs():
@@ -173,15 +188,87 @@ async def _implicit_pause_from_stream_drop() -> None:
         silence_monitor.cancel()
 
 
+@app.websocket("/api/recording/results")
+async def stream_results(websocket: WebSocket):
+    """Real-time transcription-results delivery (ticket 13), the outbound
+    counterpart to `/api/recording/stream`'s inbound audio.
+
+    Must be connected *before* `/api/recording/stream` will accept audio
+    (see `stream_audio` below) -- streaming audio with nobody listening for
+    results is treated as an error condition, not silently tolerated.
+
+    Stays open across Pause/Resume; closes itself only once it has
+    forwarded a `final=True` result.
+    """
+    await websocket.accept()
+    channel = WebSocketResultsChannel()
+    streaming_orchestrator.attach_results_channel(channel)
+    try:
+        # This handler task is the *sole* owner of `websocket`: it's the
+        # only coroutine that ever calls send/receive/close on it. The
+        # orchestrator's background consume task only ever touches
+        # `channel`, which hands messages across via an asyncio.Queue --
+        # two coroutines both driving one Starlette WebSocket at once
+        # (e.g. one sending while another receives) can deadlock the
+        # connection, so that's deliberately avoided.
+        while True:
+            message = await channel.next_message()
+            if message is None:
+                break
+            await websocket.send_json(message)
+            if message["final"]:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        streaming_orchestrator.detach_results_channel(channel)
+        channel.mark_closed()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+class WebSocketResultsChannel:
+    """Queues streaming transcription results for the results-socket
+    handler task to forward, without ever touching the WebSocket itself.
+
+    Closing happens in `stream_results` once it forwards a `final=True`
+    message -- per the ticket's "stays open until all results are
+    forwarded and then it ends" rule.
+    """
+
+    def __init__(self):
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._closed = False
+
+    async def send(self, *, text: str, final: bool) -> None:
+        if self._closed:
+            return
+        await self._queue.put({"text": text, "final": final})
+
+    async def next_message(self) -> dict | None:
+        return await self._queue.get()
+
+    def mark_closed(self) -> None:
+        self._closed = True
+
+
 @app.websocket("/api/recording/stream")
 async def stream_audio(websocket: WebSocket):
     """Real-time audio ingest (ticket 04.1), replacing the buffered
     /api/recording/audio-chunk POST for streaming clients. Only accepts
-    frames while a Recording is active; closing the socket (deliberately or
-    via a dropped connection) is treated as an implicit Pause.
+    frames while a Recording is active, and only once a results channel
+    (ticket 13, `/api/recording/results`) is already attached -- audio with
+    nowhere for its transcription to go is rejected outright. Closing the
+    socket (deliberately or via a dropped connection) is treated as an
+    implicit Pause.
     """
     if recording_session.state != "recording":
         await websocket.close(code=4409, reason="No active Recording")
+        return
+    if not streaming_orchestrator.has_results_channel:
+        await websocket.close(code=4410, reason="No results channel connected")
         return
 
     await websocket.accept()
@@ -219,16 +306,22 @@ async def pause_recording():
     # Mic is already off while paused, so Silence Timeout does not apply.
     # Pause also flushes the current audio buffer for transcription (ticket
     # 04) and closes the streaming session without forcing a final result
-    # (ticket 04.1); Resume then starts fresh against both.
+    # (ticket 04.1); Resume then starts fresh against both. The results
+    # channel (ticket 13) is left open across Pause -- it only closes on a
+    # forwarded final result.
     result = await _transition(recording_session.pause, with_transcription=True)
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
     return result
 
 
+
 # Pause flushes the current audio buffer for transcription (ticket 04);
     # Resume then starts against an empty buffer.
     return await _transition(recording_session.pause, with_transcription=True)
+
+
+
 
 
 
@@ -269,4 +362,7 @@ async def navigation_stop():
 
     await streaming_orchestrator.stop()
     return await _transition(recording_session.stop, with_transcription=False)
+
+    # await streaming_orchestrator.stop()
+    # return await _transition(recording_session.stop, with_transcription=True)
 

@@ -18,6 +18,7 @@ class FakeRecordingClient implements RecordingClient {
   calls: string[] = [];
   private state: RecordingState;
   private rejectNext: string | null = null;
+  private nextTranscription: RecordingSnapshot["transcription"] = undefined;
 
   constructor(initial: RecordingState = "idle") {
     this.state = initial;
@@ -25,6 +26,10 @@ class FakeRecordingClient implements RecordingClient {
 
   rejectNextTransitionWith(message: string): void {
     this.rejectNext = message;
+  }
+
+  setNextTranscription(transcription: RecordingSnapshot["transcription"]): void {
+    this.nextTranscription = transcription;
   }
 
   async getState(): Promise<RecordingSnapshot> {
@@ -69,7 +74,7 @@ class FakeRecordingClient implements RecordingClient {
       throw new RecordingRejected(message);
     }
     this.state = nextState;
-    return { state: this.state };
+    return { state: this.state, transcription: this.nextTranscription };
   }
 }
 
@@ -226,6 +231,33 @@ describe("Record / Stop / Pause controls", () => {
     await flush();
 
     expect(mic.calls).toEqual([]);
+  });
+
+  it("a Pause response's transcription result overwrites the previously displayed one", async () => {
+    const client = new FakeRecordingClient("recording");
+    client.setNextTranscription({ inserted: "hello", error: null });
+    const controls = new RecordingControls(container, client);
+    await controls.render();
+
+    (container.querySelector('[data-action="pause"]') as HTMLElement).click();
+    await flush();
+
+    expect(controls.transcription).toEqual({ inserted: "hello", error: null });
+  });
+
+  it("a later transcription result replaces an earlier one rather than accumulating", async () => {
+    const client = new FakeRecordingClient("paused");
+    client.setNextTranscription({ inserted: "first", error: null });
+    const controls = new RecordingControls(container, client);
+    await controls.render();
+    (container.querySelector('[data-action="resume"]') as HTMLElement).click();
+    await flush();
+
+    client.setNextTranscription({ inserted: "second", error: null });
+    (container.querySelector('[data-action="pause"]') as HTMLElement).click();
+    await flush();
+
+    expect(controls.transcription).toEqual({ inserted: "second", error: null });
   });
 
   it("a rejected transition leaves the displayed state unchanged", async () => {
