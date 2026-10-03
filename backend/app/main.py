@@ -10,6 +10,10 @@ from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
 from .note import ActiveNote
 from .recording import InvalidRecordingTransition, RecordingSession
 from .silence_timeout import SilenceTimeoutMonitor
+<<<<<<< HEAD
+=======
+from .transcription import TranscriptionError
+>>>>>>> Bug
 from .streaming_orchestrator import StreamingTranscriptionOrchestrator
 from .transcription import (
     StreamingTranscriptionSession,
@@ -31,10 +35,13 @@ SIDEBAR_TABS = ["All Notes", "Bookmarks"]
 audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
+<<<<<<< HEAD
 
 
 
 
+=======
+>>>>>>> Bug
 async def _on_silence_timeout() -> None:
     """Fires when 15s pass with no transcribed speech during an active
     Recording. Behaves identically to a manual Stop."""
@@ -47,9 +54,12 @@ async def _on_silence_timeout() -> None:
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
 
 
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> Bug
 class UnconfiguredTranscriptionService:
     """Default transcription backend until a real one is wired in.
 
@@ -229,6 +239,7 @@ async def pause_recording():
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
     return result
+<<<<<<< HEAD
 
 # Pause flushes the current audio buffer for transcription (ticket 04);
     # Resume then starts against an empty buffer.
@@ -236,6 +247,8 @@ async def pause_recording():
 
 
 
+=======
+>>>>>>> Bug
 
 @app.post("/api/recording/resume")
 async def resume_recording():
@@ -268,6 +281,7 @@ async def navigation_stop():
     if recording_session.state == "idle":
         return {"state": recording_session.state}
     silence_monitor.cancel()
+<<<<<<< HEAD
 
     return await _transition(recording_session.stop)
     return await _transition(recording_session.stop, with_transcription=True)
@@ -275,3 +289,7 @@ async def navigation_stop():
     await streaming_orchestrator.stop()
     return await _transition(recording_session.stop, with_transcription=True)
 
+=======
+    await streaming_orchestrator.stop()
+    return await _transition(recording_session.stop, with_transcription=True)
+>>>>>>> Bug

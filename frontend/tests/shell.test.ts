@@ -87,6 +87,42 @@ describe("Shell & Navigation Frame", () => {
     expect(calls).toEqual(["navigationStop"]);
   });
 
+  it("does not destroy the recording toolbar's DOM when switching tabs", () => {
+    const shell = new Shell(container);
+    shell.render();
+
+    const toolbar = container.querySelector(
+      "[data-region='recording-toolbar']"
+    ) as HTMLElement;
+    const marker = document.createElement("span");
+    marker.setAttribute("data-marker", "mounted-controls");
+    toolbar.appendChild(marker);
+
+    (container.querySelector('[data-tab="Bookmarks"]') as HTMLElement).click();
+
+    expect(
+      container.querySelector("[data-marker='mounted-controls']")
+    ).not.toBeNull();
+  });
+
+  it("does not destroy the recording toolbar's DOM when re-clicking the active tab", () => {
+    const shell = new Shell(container);
+    shell.render();
+
+    const toolbar = container.querySelector(
+      "[data-region='recording-toolbar']"
+    ) as HTMLElement;
+    const marker = document.createElement("span");
+    marker.setAttribute("data-marker", "mounted-controls");
+    toolbar.appendChild(marker);
+
+    (container.querySelector('[data-tab="All Notes"]') as HTMLElement).click();
+
+    expect(
+      container.querySelector("[data-marker='mounted-controls']")
+    ).not.toBeNull();
+  });
+
   it("does not trigger Navigation Stop when clicking the already-active tab", () => {
     const calls: string[] = [];
     const notifier = {
