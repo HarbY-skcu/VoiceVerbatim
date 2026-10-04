@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from .audio_buffer import AudioBuffer
 from .audio_sources import AudioSource, AudioSourceRegistry, UnknownAudioSource
 from .note import ActiveNote
+from .note_store import NoteTitleGenerator
 from .recording import InvalidRecordingTransition, RecordingSession
 from .silence_timeout import SilenceTimeoutMonitor
 
@@ -22,6 +23,7 @@ from .transcription import (
     TranscriptionError,
 )
 from .transcription_pipeline import TranscriptionPipeline
+from .vosk_transcription import VoskStreamingTranscriptionService, _load_model
 
 app = FastAPI(title="Voice-to-Text Notes")
 
@@ -38,12 +40,13 @@ audio_registry = AudioSourceRegistry()
 recording_session = RecordingSession()
 
 
-
-
-
 async def _on_silence_timeout() -> None:
-    """Fires when 15s pass with no transcribed speech during an active
-    Recording. Behaves identically to a manual Stop."""
+    """Fires when the Silence Timeout window passes with no new
+    transcription text during an active Recording. Behaves identically to
+    a manual Stop: tears down the streaming orchestrator (closing the
+    results channel, which is the frontend's cue to resync to idle) and
+    transitions the Recording session itself."""
+    await streaming_orchestrator.stop()
     try:
         await recording_session.stop()
     except InvalidRecordingTransition:
@@ -51,9 +54,6 @@ async def _on_silence_timeout() -> None:
 
 
 silence_monitor = SilenceTimeoutMonitor(_on_silence_timeout)
-
-
-
 
 
 class UnconfiguredTranscriptionService:
@@ -93,12 +93,28 @@ class UnconfiguredStreamingTranscriptionService:
 
 
 note = ActiveNote()
+note_titles = NoteTitleGenerator()
 pipeline = TranscriptionPipeline(
     buffer=AudioBuffer(), note=note, service=UnconfiguredTranscriptionService()
 )
 streaming_orchestrator = StreamingTranscriptionOrchestrator(
-    note=note, service=UnconfiguredStreamingTranscriptionService()
+    service=VoskStreamingTranscriptionService(),
+    # Every result (interim or final) counts as "still talking" for the
+    # Silence Timeout window -- see silence_timeout.py.
+    on_result=lambda: silence_monitor.notify_speech(),
 )
+
+
+@app.on_event("startup")
+async def _preload_transcription_model() -> None:
+    """Preloads the Vosk model off the event loop at startup.
+
+    Loading parses ~2-3GB of files and can take tens of seconds; doing it
+    lazily on the first streaming request would make that request (and
+    every other one queued behind it on the event loop) hang. Doing it
+    here, during startup, pays that cost once up front instead.
+    """
+    await asyncio.to_thread(_load_model)
 
 
 
@@ -153,6 +169,40 @@ def get_recording_state():
     return {"state": recording_session.state}
 
 
+@app.get("/api/note")
+def get_active_note():
+    """Ticket 14: the Note being built from the flowing transcript.
+
+    `text` is whatever the frontend last pushed via `PUT /api/note`
+    (full-text overwrite -- ticket 14 moved composition/positioning
+    ownership to the frontend, so this may lag the live stream by design,
+    see streaming_orchestrator.py); `title` is the gap-filling
+    "Untitled N" placeholder assigned at record start until ticket 06's
+    auto-generation/manual-edit lands.
+    """
+    return {"title": note.title, "text": note.text}
+
+
+class NoteTextIn(BaseModel):
+    text: str
+
+
+@app.put("/api/note")
+def update_active_note(payload: NoteTextIn):
+    """Ticket 14: the frontend's full-text overwrite.
+
+    The frontend owns composition/positioning entirely now -- it splices
+    transcription results and manual edits into its own locally-tracked
+    text, then pushes the resulting full text here (debounced for manual
+    edits, immediate for transcription results and on
+    Record/Stop/navigation-stop). The backend is a dumb sink: no
+    splicing, no cursor.
+    """
+    note.set_text(payload.text)
+    note.save()
+    return {"title": note.title, "text": note.text}
+
+
 async def _transition(action, *, with_transcription: bool = False):
     try:
         state = await action()
@@ -174,18 +224,22 @@ async def append_audio_chunk(payload: AudioChunkIn):
     return {"ok": True}
 
 
-async def _implicit_pause_from_stream_drop() -> None:
+async def _implicit_stop_from_stream_drop() -> None:
     """A dropped/closed streaming socket is treated identically to a manual
-    Pause: the mic is gone, so recording pauses (idle Recordings never
+    Stop: the mic is gone, so recording stops (idle Recordings never
     reach here since the socket only accepts frames while recording).
+
+    No transcription flush is forced here -- same as Navigation Stop, this
+    fires from an event that ended input rather than a deliberate user
+    action, and the streaming path already commits transcribed text
+    incrementally via the results socket as it arrives.
     """
+    silence_monitor.cancel()
     await streaming_orchestrator.stop()
     try:
-        await recording_session.pause()
+        await recording_session.stop()
     except InvalidRecordingTransition:
         pass
-    else:
-        silence_monitor.cancel()
 
 
 @app.websocket("/api/recording/results")
@@ -197,8 +251,11 @@ async def stream_results(websocket: WebSocket):
     (see `stream_audio` below) -- streaming audio with nobody listening for
     results is treated as an error condition, not silently tolerated.
 
-    Stays open across Pause/Resume; closes itself only once it has
-    forwarded a `final=True` result.
+    Stays open for the entire Recording regardless of how many interim/
+    final results are forwarded along the way (a long dictation session
+    with natural pauses between sentences produces many); it only closes
+    once the orchestrator's `stop()` actually ends the Recording (manual
+    Stop, Navigation Stop, Silence Timeout, or a dropped audio socket).
     """
     await websocket.accept()
     channel = WebSocketResultsChannel()
@@ -216,8 +273,6 @@ async def stream_results(websocket: WebSocket):
             if message is None:
                 break
             await websocket.send_json(message)
-            if message["final"]:
-                break
     except WebSocketDisconnect:
         pass
     finally:
@@ -233,9 +288,16 @@ class WebSocketResultsChannel:
     """Queues streaming transcription results for the results-socket
     handler task to forward, without ever touching the WebSocket itself.
 
-    Closing happens in `stream_results` once it forwards a `final=True`
-    message -- per the ticket's "stays open until all results are
-    forwarded and then it ends" rule.
+    Two distinct ways this ends, both idempotent via `_closed`:
+    - `close()`: the orchestrator decided the Recording actually ended
+      (manual Stop, Navigation Stop, Silence Timeout, dropped audio
+      socket) and is telling this channel's consumer (`stream_results`)
+      to stop waiting for more -- pushes a `None` sentinel so the
+      handler's loop breaks and closes the WebSocket.
+    - `mark_closed()`: the *consumer* side ended first (e.g. the results
+      WebSocket itself disconnected) -- stops accepting/queuing further
+      `send()` calls, but doesn't push a sentinel since nobody's left to
+      read it.
     """
 
     def __init__(self):
@@ -246,6 +308,15 @@ class WebSocketResultsChannel:
         if self._closed:
             return
         await self._queue.put({"text": text, "final": final})
+
+    async def close(self) -> None:
+        """The orchestrator ending the Recording -- signal the consumer
+        (`stream_results`) to stop via a sentinel, then stop accepting
+        further sends."""
+        if self._closed:
+            return
+        self._closed = True
+        await self._queue.put(None)
 
     async def next_message(self) -> dict | None:
         return await self._queue.get()
@@ -262,7 +333,7 @@ async def stream_audio(websocket: WebSocket):
     (ticket 13, `/api/recording/results`) is already attached -- audio with
     nowhere for its transcription to go is rejected outright. Closing the
     socket (deliberately or via a dropped connection) is treated as an
-    implicit Pause.
+    implicit Stop.
     """
     if recording_session.state != "recording":
         await websocket.close(code=4409, reason="No active Recording")
@@ -290,47 +361,16 @@ async def stream_audio(websocket: WebSocket):
         # this cleanup can be cut off mid-way; that's a known harness
         # limitation, not production behaviour, so it isn't worked around
         # here.
-        await _implicit_pause_from_stream_drop()
+        await _implicit_stop_from_stream_drop()
 
 
 @app.post("/api/recording/start")
 async def start_recording():
     result = await _transition(recording_session.start)
-    silence_monitor.start()
-    await streaming_orchestrator.start()
-    return result
-
-
-@app.post("/api/recording/pause")
-async def pause_recording():
-    # Mic is already off while paused, so Silence Timeout does not apply.
-    # Pause also flushes the current audio buffer for transcription (ticket
-    # 04) and closes the streaming session without forcing a final result
-    # (ticket 04.1); Resume then starts fresh against both. The results
-    # channel (ticket 13) is left open across Pause -- it only closes on a
-    # forwarded final result.
-    result = await _transition(recording_session.pause, with_transcription=True)
-    silence_monitor.cancel()
-    await streaming_orchestrator.stop()
-    return result
-
-
-
-# Pause flushes the current audio buffer for transcription (ticket 04);
-    # Resume then starts against an empty buffer.
-    return await _transition(recording_session.pause, with_transcription=True)
-
-
-
-
-
-
-
-
-
-@app.post("/api/recording/resume")
-async def resume_recording():
-    result = await _transition(recording_session.resume)
+    if note.title is None:
+        # Note is created on record start as "Untitled N" (gap-filling);
+        # read-only during recording, editable after stop (ticket 14).
+        note.title = note_titles.next_title()
     silence_monitor.start()
     await streaming_orchestrator.start()
     return result
@@ -341,14 +381,6 @@ async def stop_recording():
     silence_monitor.cancel()
     await streaming_orchestrator.stop()
     return await _transition(recording_session.stop, with_transcription=True)
-
-
-@app.post("/api/recording/speech")
-async def notify_transcribed_speech():
-    """Called whenever new transcribed speech arrives during an active
-    Recording. Resets the Silence Timeout window."""
-    silence_monitor.notify_speech()
-    return {"state": recording_session.state}
 
 
 @app.post("/api/recording/navigation-stop")

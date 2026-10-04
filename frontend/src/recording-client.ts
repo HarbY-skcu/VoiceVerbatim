@@ -1,7 +1,7 @@
-export type RecordingState = "idle" | "recording" | "paused";
+export type RecordingState = "idle" | "recording";
 
 /**
- * The batch transcription result the backend inlines into Pause/Stop
+ * The batch transcription result the backend inlines into Stop
  * responses (ticket 04's `result["transcription"]`). Ticket 13 wires this
  * up on the frontend for the first time -- previously present in every
  * response but never read here. `inserted` is the text just committed to
@@ -15,7 +15,7 @@ export interface BatchTranscriptionResult {
 
 export interface RecordingSnapshot {
   state: RecordingState;
-  /** Only present on Pause/Stop responses, which flush the audio buffer for transcription. */
+  /** Only present on Stop responses, which flush the audio buffer for transcription. */
   transcription?: BatchTranscriptionResult;
 }
 
@@ -28,11 +28,7 @@ export interface RecordingSnapshot {
 export interface RecordingClient {
   getState(): Promise<RecordingSnapshot>;
   start(): Promise<RecordingSnapshot>;
-  pause(): Promise<RecordingSnapshot>;
-  resume(): Promise<RecordingSnapshot>;
   stop(): Promise<RecordingSnapshot>;
-  /** Reports a transcribed speech event, resetting the Silence Timeout window. */
-  notifySpeech(): Promise<void>;
   /**
    * Called when the user navigates away from the current Note view while a
    * Recording may be active. Behaves identically to a manual Stop; a no-op
@@ -57,20 +53,8 @@ export class HttpRecordingClient implements RecordingClient {
     return this.post("/api/recording/start");
   }
 
-  pause(): Promise<RecordingSnapshot> {
-    return this.post("/api/recording/pause");
-  }
-
-  resume(): Promise<RecordingSnapshot> {
-    return this.post("/api/recording/resume");
-  }
-
   stop(): Promise<RecordingSnapshot> {
     return this.post("/api/recording/stop");
-  }
-
-  async notifySpeech(): Promise<void> {
-    await fetch(`${this.baseUrl}/api/recording/speech`, { method: "POST" });
   }
 
   navigationStop(): Promise<RecordingSnapshot> {

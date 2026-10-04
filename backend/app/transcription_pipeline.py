@@ -1,12 +1,17 @@
 """Ticket 04: Transcription on Stop.
 
 Orchestrates the core value-delivery moment of the app: flush the buffered
-audio from a completed (or paused) Recording, send it for transcription,
-insert the result into the active Note at the cursor, and auto-save.
+audio from a completed Recording and send it for transcription.
 
-Kept as a single seam so Stop, Silence Timeout, Navigation Stop, and Pause
-all share identical behaviour (per the ticket, Pause flushes the buffer the
-same way Stop does) instead of re-implementing this logic at each call site.
+Ticket 14 moved composition/positioning ownership to the frontend: this
+pipeline no longer inserts the result into the Note itself (there is no
+cursor here to insert "at" anymore) -- it just returns the transcribed
+text for the frontend to splice into its own locally-tracked text and
+push back via `ActiveNote.set_text`.
+
+Kept as a single seam so Stop, Silence Timeout, and Navigation Stop all
+share identical behaviour instead of re-implementing this logic at each
+call site.
 """
 
 from dataclasses import dataclass
@@ -32,6 +37,4 @@ class TranscriptionPipeline:
         except TranscriptionError as exc:
             return {"inserted": None, "error": str(exc)}
 
-        self.note.insert_at_cursor(text)
-        self.note.save()
         return {"inserted": text, "error": None}

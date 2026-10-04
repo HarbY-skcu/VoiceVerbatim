@@ -63,7 +63,6 @@ def setup_function():
     asyncio.run(recording_session.reset())
     asyncio.run(audio_registry.clear())
     note.text = ""
-    note.cursor = 0
     note.saved_text = None
     streaming_orchestrator.reset()
     streaming_orchestrator.service = FakeStreamingService()
@@ -139,8 +138,8 @@ def test_stream_forwards_audio_to_the_streaming_session_while_recording():
     assert streaming_orchestrator.service.session.sent == [b"chunk-1"]
 
 
-def test_dropped_stream_socket_pauses_the_recording():
-    """Covers the implicit-Pause cleanup (main._implicit_pause_from_stream_drop)
+def test_dropped_stream_socket_stops_the_recording():
+    """Covers the implicit-Stop cleanup (main._implicit_stop_from_stream_drop)
     directly rather than through TestClient's websocket teardown.
 
     TestClient's anyio portal cancels the connection handler's task as part
@@ -157,18 +156,22 @@ def test_dropped_stream_socket_pauses_the_recording():
     test_stream_forwards_audio_to_the_streaming_session_while_recording
     above, and the orchestrator's own close/consume behaviour is covered
     in test_streaming_orchestrator.py.
+
+    No transcription flush is asserted here (with_transcription=False for
+    this implicit path, same as Navigation Stop) -- only that the session
+    actually lands back on idle, with no resumability.
     """
     import asyncio as _asyncio
 
-    from backend.app.main import _implicit_pause_from_stream_drop
+    from backend.app.main import _implicit_stop_from_stream_drop
 
     async def scenario():
         await recording_session.start()
         await streaming_orchestrator.start()
         assert recording_session.state == "recording"
 
-        await _implicit_pause_from_stream_drop()
+        await _implicit_stop_from_stream_drop()
 
-        assert recording_session.state == "paused"
+        assert recording_session.state == "idle"
 
     _asyncio.run(scenario())

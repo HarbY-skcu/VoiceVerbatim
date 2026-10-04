@@ -35,7 +35,7 @@ class StreamingTranscriptionSession(Protocol):
         ...
 
     async def close(self) -> None:
-        """Ends the session without forcing a final result (e.g. on Pause)."""
+        """Ends the session without forcing a final result (e.g. on a dropped socket)."""
         ...
 
 

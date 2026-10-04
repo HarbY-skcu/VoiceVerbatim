@@ -58,9 +58,9 @@ export interface MicWebSocketStreamerDeps {
 
 /**
  * Streams microphone audio to the backend's real-time transcription ingest.
- * `start()`/`stop()` mirror a Recording's own lifecycle (Record/Resume ->
- * start, Pause/Stop -> stop) — this class has no state-machine opinions of
- * its own, it only owns the mic-to-socket plumbing.
+ * `start()`/`stop()` mirror a Recording's own lifecycle (Record -> start,
+ * Stop -> stop) — this class has no state-machine opinions of its own, it
+ * only owns the mic-to-socket plumbing.
  */
 export class MicWebSocketStreamer implements MicStreamer {
   private stream: MediaStreamLike | null = null;
@@ -74,8 +74,8 @@ export class MicWebSocketStreamer implements MicStreamer {
 
   async start(): Promise<void> {
     if (this.socket !== null) {
-      // Already streaming; Resume after a Pause always goes through
-      // stop() first, so this is just a defensive no-op for double-clicks.
+      // Already streaming; this is just a defensive no-op for
+      // double-clicks.
       return;
     }
 

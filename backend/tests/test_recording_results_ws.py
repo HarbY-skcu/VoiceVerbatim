@@ -1,10 +1,10 @@
 """Ticket 13: /api/recording/results WebSocket wiring.
 
-The orchestrator-level forwarding/close-on-final/persists-across-pause
+The orchestrator-level forwarding/stays-attached-across-finals/closes-on-stop
 behaviour is covered against a fake channel in test_streaming_orchestrator.py
-(test_results_are_forwarded_to_an_attached_results_channel,
-test_results_channel_is_detached_once_a_final_result_is_forwarded,
-test_results_channel_stays_attached_across_pause_and_resume,
+(test_interim_and_final_results_are_forwarded_to_an_attached_channel,
+test_results_channel_stays_attached_across_an_interim_final_result,
+test_stop_detaches_and_closes_the_results_channel,
 test_has_results_channel_is_false_until_one_is_attached).
 
 A live two-WebSocket scenario (results + audio open concurrently) was
@@ -40,7 +40,6 @@ def setup_function():
     asyncio.run(recording_session.reset())
     asyncio.run(audio_registry.clear())
     note.text = ""
-    note.cursor = 0
     note.saved_text = None
     streaming_orchestrator.reset()
     streaming_orchestrator._results_channel = None

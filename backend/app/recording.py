@@ -1,6 +1,6 @@
 """Recording lifecycle state machine.
 
-Owns whether a Recording session is idle, active, or paused. This is the
+Owns whether a Recording session is idle or active. This is the
 backend's single source of truth for the Recording state — the frontend
 only ever reflects what this reports. No audio bytes are held here; only
 the lifecycle state.
@@ -38,24 +38,6 @@ class RecordingSession:
             if self._state != "idle":
                 raise InvalidRecordingTransition(
                     f"Cannot start: a Recording is already {self._state}"
-                )
-            self._state = "recording"
-            return self._state
-
-    async def pause(self) -> str:
-        async with self._lock:
-            if self._state != "recording":
-                raise InvalidRecordingTransition(
-                    f"Cannot pause: Recording is {self._state}, not recording"
-                )
-            self._state = "paused"
-            return self._state
-
-    async def resume(self) -> str:
-        async with self._lock:
-            if self._state != "paused":
-                raise InvalidRecordingTransition(
-                    f"Cannot resume: Recording is {self._state}, not paused"
                 )
             self._state = "recording"
             return self._state

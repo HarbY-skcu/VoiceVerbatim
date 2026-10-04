@@ -1,15 +1,20 @@
-"""Silence Timeout: auto-stop a Recording after a period of no speech.
+"""Silence Timeout: auto-stop a Recording after a period with no new
+transcription text.
 
 Runs as a background asyncio task once a Recording starts. Every
 `poll_interval` seconds it checks how long it has been since the last
-transcribed speech arrived; once that gap reaches `timeout_seconds` it fires
-`on_timeout` (the same stop-and-save path a manual Stop uses) and stops
-itself. `notify_speech` resets the gap, and `cancel` stops watching entirely
-(used for Pause, where the mic is already off and no timeout should apply).
+transcription result (interim or final) arrived from the streaming
+pipeline; once that gap reaches `timeout_seconds` it fires `on_timeout`
+(the same stop-and-save path a manual Stop uses) and stops itself.
+`notify_speech` resets the gap -- called by the streaming orchestrator for
+every result it forwards, not just finals, so a long uninterrupted
+sentence never times out mid-utterance, only a genuine pause between
+words/sentences does. `cancel` stops watching entirely (used on Stop,
+where there's nothing left to time out).
 
 `timeout_seconds`, `poll_interval`, and `clock` are constructor parameters
 rather than hardcoded so tests can exercise real firing behaviour in
-milliseconds instead of waiting on the real 15-second threshold.
+milliseconds instead of waiting on the real multi-second threshold.
 """
 
 import asyncio
@@ -21,7 +26,7 @@ class SilenceTimeoutMonitor:
     def __init__(
         self,
         on_timeout: Callable[[], Awaitable[None]],
-        timeout_seconds: float = 15.0,
+        timeout_seconds: float = 5.0,
         poll_interval: float = 0.5,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:

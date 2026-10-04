@@ -1,9 +1,9 @@
 """Transient accumulation of audio chunks for a single Recording.
 
-Holds raw audio bytes between a Recording action (start/resume) and the
-next flush point (Pause or Stop). Deliberately dumb: it does not know about
-transcription, the Recording state machine, or the Note. `TranscriptionPipeline`
-is the seam that flushes it and hands the bytes off.
+Holds raw audio bytes between a Recording Start and the next flush point
+(Stop). Deliberately dumb: it does not know about transcription, the
+Recording state machine, or the Note. `TranscriptionPipeline` is the seam
+that flushes it and hands the bytes off.
 """
 
 from dataclasses import dataclass, field
@@ -23,9 +23,9 @@ class AudioBuffer:
     def flush(self) -> bytes:
         """Return the accumulated audio and clear the buffer.
 
-        Clearing on flush is what makes Resume start a new buffer per the
-        ticket's acceptance criterion — the caller never has to remember to
-        reset it separately.
+        Clearing on flush is what makes the next Start accumulate a fresh
+        buffer per the ticket's acceptance criterion — the caller never
+        has to remember to reset it separately.
         """
         audio = b"".join(self._chunks)
         self._chunks = []
