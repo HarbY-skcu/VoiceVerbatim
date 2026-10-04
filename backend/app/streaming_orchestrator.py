@@ -37,7 +37,6 @@ class StreamingTranscriptionOrchestrator:
     service: StreamingTranscriptionService
     _session: StreamingTranscriptionSession | None = field(default=None, init=False)
     _consume_task: asyncio.Task | None = field(default=None, init=False)
-<<<<<<< HEAD
     # Guards session-affecting operations. Without this, a concurrent
     # `stop()` (from Pause, Navigation Stop, a dropped socket, or manual
     # Stop, each triggered by its own request/task) can close the session
@@ -47,7 +46,6 @@ class StreamingTranscriptionOrchestrator:
     # lost`. Serializing start/stop/send_audio on one lock makes each of
     # them atomic with respect to the others.
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
-=======
     _results_channel: ResultsChannel | None = field(default=None, init=False)
 
     @property
@@ -73,7 +71,6 @@ class StreamingTranscriptionOrchestrator:
         """Clear the channel, but only if it's still the current one."""
         if self._results_channel is channel:
             self._results_channel = None
->>>>>>> feature-13
 
     async def start(self) -> None:
         """Open a new streaming session and begin consuming its results."""
